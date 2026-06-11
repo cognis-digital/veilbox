@@ -1,0 +1,13 @@
+__pycache__/
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+*.pyc
+# local runtime + secrets — never commit
+.env
+config/veilbox.yaml
+out/
+*.sarif
+!demos/**

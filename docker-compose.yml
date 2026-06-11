@@ -1,0 +1,40 @@
+# veilbox — ephemeral, headless, isolated-network privacy container.
+#
+# "Anti-detect that doesn't phone home, and proves your anonymity with a
+#  built-in leak audit."
+#
+# All proxy/DNS values are read from .env or config/veilbox.yaml and are
+# PLACEHOLDERS until you supply your own. Nothing here transmits telemetry.
+services:
+  veilbox:
+    build: .
+    image: cognis/veilbox:local
+    container_name: veilbox
+    # Ephemeral: no restart, removed on exit, read-only root filesystem.
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Drop every Linux capability; the container needs none for the audit path.
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    # Isolated network namespace. Egress is forced through the proxy chain by
+    # the entrypoint; this internal network has no other members.
+    networks:
+      - veilnet
+    environment:
+      - VEILBOX_TELEMETRY=off
+      - VEILBOX_CONFIG=/work/config/veilbox.yaml
+      # Supply real values via a local .env (never commit it):
+      - NEXTDNS_PROFILE_ID=${NEXTDNS_PROFILE_ID:-PLACEHOLDER_ID}
+      - PROXY_CHAIN=${PROXY_CHAIN:-socks5://proxy-a.example:1080}
+    volumes:
+      - ./config:/work/config:ro
+      - ./out:/work/out
+    command: ["audit", "--live", "--format", "json", "--out", "/work/out/audit.json"]
+
+networks:
+  veilnet:
+    driver: bridge
+    internal: true   # no direct route to the host LAN

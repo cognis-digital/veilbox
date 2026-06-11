@@ -1,0 +1,32 @@
+# veilbox example configuration. Copy to config/veilbox.yaml and edit.
+# Every credential here is an OBVIOUS PLACEHOLDER — replace with your own.
+# Nothing in veilbox transmits telemetry.
+
+telemetry: off
+
+dns:
+  provider: nextdns
+  protocol: doh
+  # Your NextDNS profile id (6 hex chars). Placeholder shown.
+  profile_id: PLACEHOLDER_ID
+  fallback: block          # fail closed; no plaintext DNS fallback
+
+proxy:
+  mode: chain
+  dns_through_proxy: true  # never resolve outside the tunnel
+  deny_direct: true        # kill-switch: block any non-proxied egress
+  chain:
+    - socks5://USER_PLACEHOLDER:PASS_PLACEHOLDER@proxy-a.example:1080
+    - https://proxy-b.example:8443
+    - socks5://proxy-c.example:1080
+
+fingerprint:
+  # Leave fields unset to let veilbox pick a coherent identity per session.
+  rotate_each_session: true
+  # os: macos          # optional pin (must be coherent with browser)
+  # browser: safari
+  # locale: en-GB
+
+audit:
+  # Fail a CI run if the measured traceability score is at/above this value.
+  fail_on: 25
