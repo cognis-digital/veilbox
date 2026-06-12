@@ -78,7 +78,7 @@ veilbox mcp
 
 ## The leak self-audit
 
-`veilbox audit` evaluates five attribution vectors and rolls them into a single
+`veilbox audit` evaluates eight attribution vectors and rolls them into a single
 **traceability score** (lower = more anonymous). Missing signals are *skipped*,
 not penalized, so an offline audit is still meaningful.
 
@@ -88,7 +88,10 @@ not penalized, so an offline audit is still meaningful.
 | `dns_leak` | 25 | Queries resolved by anything other than the expected DoH endpoint |
 | `ip_proxy_mismatch` | 20 | Public IP ≠ proxy exit node (egress bypassing the tunnel) |
 | `tz_geo_mismatch` | 15 | Browser timezone inconsistent with the exit IP's country |
+| `client_hint_consistency` | 12 | UA OS token disagrees with the TLS/HTTP2 Client-Hint platform (`Sec-CH-UA-Platform`) — only half the identity was spoofed |
+| `navigator_coherence` | 12 | `navigator.plugins`/`mediaDevices`/touch contradict the declared platform (plugins on Firefox/mobile, touch on desktop, labelled devices without permission) |
 | `fingerprint_coherence` | 10 | Fingerprint fields that contradict each other |
+| `font_entropy` | 10 | Enumerated fonts native to a *different* OS, or a set so large it is a near-unique key |
 
 Output formats: `table` (default), `json`, `sarif`.
 
@@ -105,7 +108,16 @@ Output formats: `table` (default), `json`, `sarif`.
   "expected_resolvers": ["45.90.28.0", "45.90.30.0"],
   "timezone": "Australia/Sydney",
   "ip_geo_country": "AU",
-  "profile": { "...a veilbox fingerprint profile..." }
+  "profile": { "...a veilbox fingerprint profile..." },
+
+  "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0",
+  "ua_platform": "\"Linux\"",
+  "fonts": ["DejaVu Sans", "Ubuntu"],
+  "declared_platform": "linux",
+  "browser": "firefox",
+  "touch_support": false,
+  "navigator_plugins": [],
+  "media_devices": [{"kind": "videoinput", "label": ""}]
 }
 ```
 

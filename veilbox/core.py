@@ -508,7 +508,35 @@ _CHECK_WEIGHTS = {
     "ip_proxy_mismatch": 20,
     "tz_geo_mismatch": 15,
     "fingerprint_coherence": 10,
+    # New active-fingerprinting consistency vectors. A mismatch in any of these
+    # is a strong, rare, trackable signal — worse than not spoofing at all.
+    "client_hint_consistency": 12,
+    "font_entropy": 10,
+    "navigator_coherence": 12,
 }
+
+# Maps a substring found in a User-Agent to the canonical OS token a browser's
+# Client-Hint (Sec-CH-UA-Platform / navigator.userAgentData.platform) reports.
+# ORDER MATTERS: Android UA strings contain "Linux", and macOS UA strings would
+# never contain "Windows", so the more specific tokens must be tested first.
+_UA_OS_TOKENS: List[Tuple[str, str]] = [
+    ("Windows NT", "Windows"),
+    ("Android", "Android"),          # before Linux: "Linux; Android 14; ..."
+    ("Mac OS X", "macOS"),
+    ("Macintosh", "macOS"),
+    ("Linux", "Linux"),
+]
+
+# Canonical platform -> the font stack that platform legitimately ships. Used by
+# the font-entropy vector to flag fonts that betray a *different* OS than the one
+# the profile declares (a cross-platform font is a high-signal leak).
+_PLATFORM_FONTS: Dict[str, set] = {
+    fam: set(meta["fonts"]) for fam, meta in _OS_FAMILIES.items()
+}
+# Fonts shared across desktop platforms are not, on their own, a leak.
+_UBIQUITOUS_FONTS = {"Arial", "Times New Roman", "Verdana", "Noto Sans"}
+# Above this many enumerable fonts the set is itself near-unique (high entropy).
+_FONT_ENTROPY_CEILING = 40
 
 _STATUS_PASS = "pass"
 _STATUS_LEAK = "leak"
@@ -689,6 +717,178 @@ def _check_fp_coherence(signals: Dict[str, Any]) -> CheckResult:
                        {"fingerprint_id": profile.fingerprint_id()})
 
 
+def _ua_os_token(user_agent: str) -> Optional[str]:
+    """Return the canonical OS token a browser would advertise for this UA, or
+    None if no known token is present. Tested most-specific-first."""
+    for needle, token in _UA_OS_TOKENS:
+        if needle in user_agent:
+            return token
+    return None
+
+
+def _normalize_ch_platform(value: Any) -> Optional[str]:
+    """Client-Hint platform values arrive quoted (e.g. '"Windows"') from the
+    Sec-CH-UA-Platform header and from our own _OS_FAMILIES table. Strip quotes
+    and whitespace so comparisons are apples-to-apples."""
+    if value is None:
+        return None
+    return str(value).strip().strip('"').strip("'").strip()
+
+
+def _check_client_hint_consistency(signals: Dict[str, Any]) -> CheckResult:
+    """Vector 1 — TLS/HTTP2 Client-Hint consistency.
+
+    Modern Chromium splits identity across the legacy ``User-Agent`` string and
+    the structured Client-Hints (``Sec-CH-UA-Platform`` / ``navigator
+    .userAgentData.platform``). Naive spoofers patch one and forget the other,
+    so the UA claims one OS while the Client-Hint claims another — a rare,
+    high-confidence de-anonymization signal. We require the OS token in the UA
+    to agree with the declared Client-Hint platform.
+    """
+    w = _CHECK_WEIGHTS["client_hint_consistency"]
+    ua = signals.get("user_agent")
+    ch_platform = _normalize_ch_platform(
+        signals.get("ua_platform", signals.get("sec_ch_ua_platform")))
+    if not ua or not ch_platform:
+        return CheckResult("client_hint_consistency", _STATUS_SKIP, w,
+                           "no user_agent + client-hint platform pair supplied")
+    ua_os = _ua_os_token(ua)
+    if ua_os is None:
+        return CheckResult("client_hint_consistency", _STATUS_SKIP, w,
+                           "user-agent contains no recognizable OS token")
+    if ua_os != ch_platform:
+        return CheckResult(
+            "client_hint_consistency", _STATUS_LEAK, w,
+            "Client-Hint platform disagrees with the User-Agent OS token — the "
+            "two halves of the identity were not spoofed coherently",
+            {"ua_os_token": ua_os, "client_hint_platform": ch_platform,
+             "user_agent": ua})
+    return CheckResult("client_hint_consistency", _STATUS_PASS, w,
+                       "Client-Hint platform agrees with the User-Agent OS token",
+                       {"platform": ch_platform})
+
+
+def _check_font_entropy(signals: Dict[str, Any]) -> CheckResult:
+    """Vector 2 — font-enumeration entropy.
+
+    The set of installed fonts is one of the highest-entropy passive signals on
+    the web. Two failure modes: (a) the list contains fonts that ship on a
+    *different* OS than the one declared (e.g. ``Segoe UI`` on macOS), which both
+    leaks the real platform and contradicts the spoof; (b) the list is so large
+    it is effectively a unique key. Either condition is a leak.
+    """
+    w = _CHECK_WEIGHTS["font_entropy"]
+    fonts = signals.get("fonts")
+    platform = signals.get("declared_platform")
+    if fonts is None or platform is None:
+        return CheckResult("font_entropy", _STATUS_SKIP, w,
+                           "no fonts + declared_platform pair supplied")
+    plat = str(platform).strip().lower()
+    native = _PLATFORM_FONTS.get(plat)
+    if native is None:
+        return CheckResult("font_entropy", _STATUS_SKIP, w,
+                           f"no font baseline for platform {platform!r}")
+    # Fonts that belong to some *other* platform's native stack and are not on
+    # this one and are not ubiquitous cross-platform fonts: those betray the OS.
+    other_platform_fonts: set = set()
+    for fam, fset in _PLATFORM_FONTS.items():
+        if fam != plat:
+            other_platform_fonts |= fset
+    foreign = sorted(
+        f for f in fonts
+        if f not in native
+        and f not in _UBIQUITOUS_FONTS
+        and f in other_platform_fonts)
+    if foreign or len(fonts) > _FONT_ENTROPY_CEILING:
+        reason = []
+        if foreign:
+            reason.append(f"{len(foreign)} font(s) native to a different OS")
+        if len(fonts) > _FONT_ENTROPY_CEILING:
+            reason.append(f"{len(fonts)} fonts exceeds the entropy ceiling "
+                          f"({_FONT_ENTROPY_CEILING})")
+        return CheckResult(
+            "font_entropy", _STATUS_LEAK, w,
+            "font enumeration leaks identity — " + "; ".join(reason),
+            {"declared_platform": plat, "font_count": len(fonts),
+             "foreign_fonts": foreign})
+    return CheckResult("font_entropy", _STATUS_PASS, w,
+                       "font set is plausible for the declared platform and "
+                       "below the entropy ceiling",
+                       {"declared_platform": plat, "font_count": len(fonts)})
+
+
+def _check_navigator_coherence(signals: Dict[str, Any]) -> CheckResult:
+    """Vector 3 — navigator.plugins / mediaDevices coherence vs declared platform.
+
+    ``navigator.plugins`` is empty on every modern browser except where a PDF
+    viewer is registered, and is *always* empty on mobile and on Firefox; a
+    populated plugin array on a mobile or Firefox profile is a tell. Touch
+    support must track the device class (mobile => touch, desktop => no touch).
+    ``navigator.mediaDevices`` exposing labelled devices before any getUserMedia
+    permission grant is also anomalous. Any of these contradicts the declared
+    platform and is therefore a leak.
+    """
+    w = _CHECK_WEIGHTS["navigator_coherence"]
+    platform = signals.get("declared_platform")
+    if platform is None:
+        return CheckResult("navigator_coherence", _STATUS_SKIP, w,
+                           "no declared_platform supplied")
+    plat = str(platform).strip().lower()
+    if plat not in _OS_FAMILIES:
+        return CheckResult("navigator_coherence", _STATUS_SKIP, w,
+                           f"unknown declared_platform {platform!r}")
+    is_mobile = _OS_FAMILIES[plat]["device_class"] == "mobile"
+    touch = signals.get("touch_support")
+    plugins = signals.get("navigator_plugins")
+    media = signals.get("media_devices")
+    browser = (signals.get("browser") or "").strip().lower()
+
+    problems: List[str] = []
+    evidence: Dict[str, Any] = {"declared_platform": plat}
+
+    # touch must track device class (only evaluated when explicitly provided).
+    if touch is not None:
+        evidence["touch_support"] = touch
+        if is_mobile and touch is False:
+            problems.append("mobile platform reports touch_support=False")
+        if not is_mobile and touch is True:
+            problems.append("desktop platform reports touch_support=True")
+
+    # plugins must be empty on mobile and on Firefox.
+    if plugins is not None:
+        evidence["plugin_count"] = len(plugins)
+        if (is_mobile or browser == "firefox") and len(plugins) > 0:
+            where = "mobile" if is_mobile else "Firefox"
+            problems.append(
+                f"{len(plugins)} navigator.plugins entries on a {where} profile "
+                f"(expected none)")
+
+    # labelled media devices before a permission grant leak hardware identity.
+    if media is not None:
+        labelled = [d for d in media
+                    if isinstance(d, dict) and d.get("label")]
+        evidence["media_device_count"] = len(media)
+        if labelled:
+            problems.append(
+                f"{len(labelled)} mediaDevices expose non-empty labels without a "
+                f"permission grant")
+
+    # Nothing evaluable was supplied beyond the platform itself.
+    if touch is None and plugins is None and media is None:
+        return CheckResult("navigator_coherence", _STATUS_SKIP, w,
+                           "no navigator signals (touch/plugins/media) supplied")
+
+    if problems:
+        evidence["problems"] = problems
+        return CheckResult(
+            "navigator_coherence", _STATUS_LEAK, w,
+            "navigator surface contradicts the declared platform — "
+            + "; ".join(problems), evidence)
+    return CheckResult("navigator_coherence", _STATUS_PASS, w,
+                       "navigator.plugins / mediaDevices / touch are coherent "
+                       "with the declared platform", evidence)
+
+
 def _profile_from_dict(d: Dict[str, Any]) -> Profile:
     fields = Profile.__dataclass_fields__  # type: ignore[attr-defined]
     missing = [k for k in fields if k not in d]
@@ -745,7 +945,10 @@ def run_audit(signals: Optional[Dict[str, Any]] = None,
 
     ``signals`` keys (all optional; missing ones become 'skipped'):
       public_ip, proxy_exit_ip, webrtc_local_ips, dns_resolvers,
-      expected_resolvers, timezone, ip_geo_country, profile
+      expected_resolvers, timezone, ip_geo_country, profile,
+      user_agent, ua_platform (or sec_ch_ua_platform),
+      fonts, declared_platform,
+      touch_support, navigator_plugins, media_devices, browser
     """
     signals = signals or {}
     results = [
@@ -754,6 +957,9 @@ def run_audit(signals: Optional[Dict[str, Any]] = None,
         _check_ip_proxy(signals),
         _check_tz_geo(signals),
         _check_fp_coherence(signals),
+        _check_client_hint_consistency(signals),
+        _check_font_entropy(signals),
+        _check_navigator_coherence(signals),
     ]
     return AuditReport(source=source, results=results)
 
