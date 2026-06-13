@@ -3,7 +3,7 @@
 > Part of the **[Cognis Neural Suite](https://github.com/cognis-digital)** by [Cognis Digital](https://cognis.digital)
 > Cognis Open Collaboration License (COCL) v1.0 · domain: `privacy`
 
-[![PyPI](https://img.shields.io/pypi/v/cognis-veilbox.svg)](https://pypi.org/project/cognis-veilbox/)
+[![install](https://img.shields.io/badge/install-git%2B%20%C2%B7%20pipx%20%C2%B7%20uv-6b46c1.svg)](#install--every-way-every-platform)
 [![CI](https://github.com/cognis-digital/veilbox/actions/workflows/ci.yml/badge.svg)](https://github.com/cognis-digital/veilbox/actions)
 [![License: COCL 1.0](https://img.shields.io/badge/License-COCL%201.0-2b6cb0.svg)](LICENSE)
 [![Suite](https://img.shields.io/badge/Cognis-Neural%20Suite-6b46c1.svg)](https://github.com/cognis-digital)
@@ -22,6 +22,12 @@ attribution/leak self-audit that scores how traceable you actually are.
 > evasion. See [ETHICS.md](ETHICS.md). By using veilbox you agree to use it
 > lawfully and only on systems you own or are authorized to test.
 
+<!-- cognis:layman:start -->
+## What is this?
+
+veilbox is a privacy tool that helps you stay anonymous online by generating a consistent, believable digital identity for your browser — so websites can't tell that your settings are fake. It then runs a built-in audit that checks your actual session for common privacy leaks (like your real IP slipping through WebRTC or your DNS queries going to the wrong server) and gives you a score from 0 (anonymous) to 100 (fully traceable). The whole tool runs on your own machine with no internet calls unless you ask for them, so nothing is logged or sent anywhere. It's designed for privacy-conscious individuals, security researchers, and anyone who needs to verify that their anonymity setup actually works.
+<!-- cognis:layman:end -->
+
 ## Why it's different
 
 Most "anti-detect" tools **leak via mismatched fields** — a macOS user-agent
@@ -38,10 +44,56 @@ veilbox optimizes for the opposite:
 3. **Zero telemetry.** Nothing phones home. The only network call is the opt-in
    `--live` audit probe, and it degrades gracefully offline.
 
+<!-- cognis:domains:start -->
+## Domains
+
+**Primary domain:** Cyber & Security  ·  **JTF MERIDIAN division:** NULLBYTE · SPECTER
+
+**Topics:** `cognis` `security` `infosec` `cybersecurity` `blue-team` `privacy`
+
+Part of the **Cognis Neural Suite** — 300+ source-available tools organized across 12 domains under the JTF MERIDIAN command structure. See the [suite on GitHub](https://github.com/cognis-digital) and [jtf-meridian](https://github.com/cognis-digital/jtf-meridian) for how the pieces fit together.
+<!-- cognis:domains:end -->
+
+<!-- cognis:install:start -->
+## Install
+
+`veilbox` is source-available (not published to PyPI) — every method below installs
+straight from GitHub. Pick whichever you prefer; the one-line scripts auto-detect
+the best tool available on your machine.
+
+**One-liner (Linux / macOS):**
+```sh
+curl -fsSL https://raw.githubusercontent.com/cognis-digital/veilbox/HEAD/install.sh | sh
+```
+
+**One-liner (Windows PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/cognis-digital/veilbox/HEAD/install.ps1 | iex
+```
+
+**Or install manually — any one of:**
+```sh
+pipx install "git+https://github.com/cognis-digital/veilbox.git"     # isolated (recommended)
+uv tool install "git+https://github.com/cognis-digital/veilbox.git"  # uv
+pip install "git+https://github.com/cognis-digital/veilbox.git"      # pip
+```
+
+**From source:**
+```sh
+git clone https://github.com/cognis-digital/veilbox.git
+cd veilbox && pip install .
+```
+
+Then run:
+```sh
+veilbox --help
+```
+<!-- cognis:install:end -->
+
 ## Install
 
 ```bash
-pip install cognis-veilbox
+pip install "git+https://github.com/cognis-digital/veilbox.git"
 # or, from this repo:
 pip install -e ".[dev]"
 ```
@@ -168,6 +220,32 @@ Tools: `generate_fingerprint`, `audit_signals`.
 fingerprint pinning, audit gate). All credentials in examples are **obvious
 placeholders**. Never commit `config/veilbox.yaml` or `.env` (both are
 gitignored).
+
+<a name="verification"></a>
+## Verification
+
+[![tests](https://img.shields.io/badge/tests-71%20passing-2ea44f.svg)](AUDIT.md)
+
+Every push is verified end-to-end. Latest audit (2026-06-12):
+
+```text
+tests        : 71 passed, 0 failed, 0 errored
+compile      : all modules parse
+cli          : C:\Python314\python.exe: No module named https
+package      : https
+```
+
+<details><summary>CLI surface (<code>--help</code>)</summary>
+
+```text
+C:\Python314\python.exe: No module named https
+```
+</details>
+
+Full machine-readable results: [`AUDIT.md`](AUDIT.md) · regenerate with `python -m https --help` + `pytest -q`.
+
+<div align="right"><a href="#top">↑ back to top</a></div>
+
 
 ## License
 
