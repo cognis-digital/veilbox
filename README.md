@@ -22,6 +22,42 @@ attribution/leak self-audit that scores how traceable you actually are.
 > evasion. See [ETHICS.md](ETHICS.md). By using veilbox you agree to use it
 > lawfully and only on systems you own or are authorized to test.
 
+## Usage — step by step
+
+`veilbox` is a self-hosted, zero-telemetry anti-fingerprint toolkit with a
+built-in attribution/leak self-audit. For privacy, OPSEC, and authorized
+research only.
+
+1. **Install** (editable from a clone, or from the wheel):
+   ```bash
+   pip install -e .
+   # provides the `veilbox` console script
+   ```
+2. **Generate a coherent device/browser fingerprint profile.** Use `--seed` for
+   a deterministic identity (same seed → same profile) or `--rotate` for a fresh
+   one; pin `--os`/`--browser`/`--locale` (must stay coherent):
+   ```bash
+   veilbox fingerprint --seed alpha --os windows --browser chrome --format json
+   ```
+3. **Emit templated egress config** for your stack:
+   ```bash
+   veilbox dns --profile-id YOUR_NEXTDNS_ID --format yaml --out nextdns.yaml
+   veilbox proxy --hop socks5://127.0.0.1:9050 --hop https://eu.example:8443 --out proxy.yaml
+   ```
+4. **Run the leak self-audit** and read the traceability score (0 = anonymous,
+   100 = traceable). `--live` collects best-effort live signals (degrades
+   offline); `--signals FILE` audits observed signals from JSON; `--format`
+   supports `table|json|sarif`:
+   ```bash
+   veilbox audit --live --format json --out veilbox-audit.json
+   ```
+5. **Gate CI / automation** with `--fail-on SCORE` — exits non-zero when the
+   traceability score is at or above the given value (you can also run veilbox
+   as an MCP server with `veilbox mcp`):
+   ```bash
+   veilbox audit --live --fail-on 40
+   ```
+
 ## Why it's different
 
 Most "anti-detect" tools **leak via mismatched fields** — a macOS user-agent
