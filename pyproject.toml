@@ -36,3 +36,6 @@ veilbox = "veilbox.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["veilbox"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
