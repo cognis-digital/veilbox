@@ -13,9 +13,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from veilbox.core import (
     generate_profile,
     run_audit,
-    _check_client_hint_consistency,
+    _check_client_hint_consistency,  # noqa: F401
     _check_font_entropy,
-    _check_navigator_coherence,
+    _check_navigator_coherence,  # noqa: F401
     _ua_os_token,
     _normalize_ch_platform,
     _CHECK_WEIGHTS,

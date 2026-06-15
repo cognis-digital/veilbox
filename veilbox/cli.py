@@ -97,8 +97,12 @@ def _render_audit_table(report: AuditReport) -> str:
 
 def _emit(text: str, out: Optional[str]) -> None:
     if out:
-        with open(out, "w", encoding="utf-8") as fh:
-            fh.write(text if text.endswith("\n") else text + "\n")
+        try:
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write(text if text.endswith("\n") else text + "\n")
+        except OSError as exc:
+            print(f"error: cannot write to {out!r}: {exc}", file=sys.stderr)
+            raise
         print(f"wrote {out}", file=sys.stderr)
     else:
         print(text)
@@ -187,51 +191,83 @@ def _run_fingerprint(args: argparse.Namespace) -> int:
     except ProfileError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except Exception as exc:  # unexpected failures must not traceback
+        print(f"error: unexpected problem generating profile: {exc}",
+              file=sys.stderr)
+        return 2
 
     issues = validate_profile(profile)
 
-    if args.validate_only:
-        if args.format == "json":
-            _emit(json.dumps({
-                "coherent": not issues,
-                "inconsistencies": [{"field": i.field, "message": i.message}
-                                    for i in issues],
-            }, indent=2), args.out)
-        else:
-            if issues:
-                _emit("COHERENCE: FAIL\n" + "\n".join(
-                    f"  ! {i.field}: {i.message}" for i in issues), args.out)
+    try:
+        if args.validate_only:
+            if args.format == "json":
+                _emit(json.dumps({
+                    "coherent": not issues,
+                    "inconsistencies": [{"field": i.field, "message": i.message}
+                                        for i in issues],
+                }, indent=2), args.out)
             else:
-                _emit("COHERENCE: PASS (all fields agree)", args.out)
-        return 1 if issues else 0
+                if issues:
+                    _emit("COHERENCE: FAIL\n" + "\n".join(
+                        f"  ! {i.field}: {i.message}" for i in issues), args.out)
+                else:
+                    _emit("COHERENCE: PASS (all fields agree)", args.out)
+            return 1 if issues else 0
 
-    if args.format == "json":
-        _emit(json.dumps(profile.to_dict(), indent=2), args.out)
-    else:
-        _emit(_render_profile_table(profile), args.out)
+        if args.format == "json":
+            _emit(json.dumps(profile.to_dict(), indent=2), args.out)
+        else:
+            _emit(_render_profile_table(profile), args.out)
+    except OSError:
+        return 2
     return 1 if issues else 0
 
 
 def _run_dns(args: argparse.Namespace) -> int:
-    _emit(nextdns_config(args.profile_id, fmt=args.format), args.out)
+    try:
+        _emit(nextdns_config(args.profile_id, fmt=args.format), args.out)
+    except OSError:
+        return 2
     return 0
 
 
 def _run_proxy(args: argparse.Namespace) -> int:
-    _emit(proxy_chain_config(args.hops, fmt=args.format), args.out)
+    try:
+        _emit(proxy_chain_config(args.hops, fmt=args.format), args.out)
+    except OSError:
+        return 2
     return 0
 
 
 def _run_audit(args: argparse.Namespace) -> int:
+    if args.fail_on is not None and not (0 <= args.fail_on <= 100):
+        print(
+            f"error: --fail-on value {args.fail_on!r} is out of range; "
+            "must be 0-100",
+            file=sys.stderr,
+        )
+        return 2
+
     signals = {}
     source = "<empty>"
     if args.signals:
+        if not __import__("os").path.exists(args.signals):
+            print(f"error: signals file not found: {args.signals!r}",
+                  file=sys.stderr)
+            return 2
         try:
             with open(args.signals, "r", encoding="utf-8") as fh:
                 signals = json.load(fh)
             source = args.signals
         except (OSError, json.JSONDecodeError) as exc:
             print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if not isinstance(signals, dict):
+            print(
+                f"error: signals file {args.signals!r} must contain a JSON "
+                "object, not an array or scalar",
+                file=sys.stderr,
+            )
             return 2
     if args.live:
         live = gather_live_signals()
@@ -242,12 +278,15 @@ def _run_audit(args: argparse.Namespace) -> int:
 
     report = run_audit(signals, source=source)
 
-    if args.format == "json":
-        _emit(json.dumps(report.to_dict(), indent=2), args.out)
-    elif args.format == "sarif":
-        _emit(json.dumps(audit_to_sarif(report), indent=2), args.out)
-    else:
-        _emit(_render_audit_table(report), args.out)
+    try:
+        if args.format == "json":
+            _emit(json.dumps(report.to_dict(), indent=2), args.out)
+        elif args.format == "sarif":
+            _emit(json.dumps(audit_to_sarif(report), indent=2), args.out)
+        else:
+            _emit(_render_audit_table(report), args.out)
+    except OSError:
+        return 2
 
     if args.fail_on is not None:
         return 1 if report.traceability_score >= args.fail_on else 0
@@ -257,18 +296,25 @@ def _run_audit(args: argparse.Namespace) -> int:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if args.command == "fingerprint":
-        return _run_fingerprint(args)
-    if args.command == "dns":
-        return _run_dns(args)
-    if args.command == "proxy":
-        return _run_proxy(args)
-    if args.command == "audit":
-        return _run_audit(args)
-    if args.command == "mcp":
-        from veilbox.mcp_server import run_mcp_server
-        run_mcp_server()
-        return 0
+    try:
+        if args.command == "fingerprint":
+            return _run_fingerprint(args)
+        if args.command == "dns":
+            return _run_dns(args)
+        if args.command == "proxy":
+            return _run_proxy(args)
+        if args.command == "audit":
+            return _run_audit(args)
+        if args.command == "mcp":
+            from veilbox.mcp_server import run_mcp_server
+            run_mcp_server()
+            return 0
+    except KeyboardInterrupt:
+        print("\ninterrupted", file=sys.stderr)
+        return 130
+    except Exception as exc:  # unexpected; never show a raw traceback to users
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     parser.print_help(sys.stderr)
     return 2
 

@@ -165,6 +165,12 @@ def run_mcp_server(stdin=None, stdout=None) -> None:
             stdout.write(json.dumps(_error(None, -32700, "parse error")) + "\n")
             stdout.flush()
             continue
+        if not isinstance(req, dict):
+            stdout.write(
+                json.dumps(_error(None, -32600,
+                                  "invalid request: expected a JSON object")) + "\n")
+            stdout.flush()
+            continue
         response = handle_request(req)
         if response is not None:
             stdout.write(json.dumps(response) + "\n")

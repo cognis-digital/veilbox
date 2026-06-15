@@ -54,7 +54,7 @@ _OS_FAMILIES: Dict[str, Dict[str, Any]] = {
             ("Google Inc. (NVIDIA)",
              "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
             ("Google Inc. (Intel)",
-             "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+             "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)"),  # noqa: E501
             ("Google Inc. (AMD)",
              "ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
         ],
@@ -74,7 +74,7 @@ _OS_FAMILIES: Dict[str, Dict[str, Any]] = {
             ("Google Inc. (Apple)",
              "ANGLE (Apple, Apple M1, OpenGL 4.1 Metal - 76.3)"),
             ("Google Inc. (Intel)",
-             "ANGLE (Intel, Intel(R) Iris(TM) Plus Graphics OpenGL Engine, OpenGL 4.1)"),
+             "ANGLE (Intel, Intel(R) Iris(TM) Plus Graphics OpenGL Engine, OpenGL 4.1)"),  # noqa: E501
         ],
         "screens": [(2560, 1600, 30), (1440, 900, 30), (1680, 1050, 30)],
     },
@@ -332,7 +332,8 @@ def validate_profile(profile: Profile) -> List[Inconsistency]:
     issues: List[Inconsistency] = []
 
     if profile.os_family not in _OS_FAMILIES:
-        issues.append(Inconsistency("os_family", f"unknown OS family {profile.os_family!r}"))
+        issues.append(  # noqa: E501
+            Inconsistency("os_family", f"unknown OS family {profile.os_family!r}"))
         return issues
     if profile.browser not in _BROWSERS:
         issues.append(Inconsistency("browser", f"unknown browser {profile.browser!r}"))
@@ -442,6 +443,14 @@ def proxy_chain_config(hops: Optional[List[str]] = None,
                        fmt: str = "yaml") -> str:
     """Emit a proxy-chain config. Hops are placeholder ``scheme://host:port``
     strings by default. The chain routes egress through each hop in order."""
+    if hops is not None and not isinstance(hops, list):
+        raise ValueError(
+            f"hops must be a list of strings, got {type(hops).__name__!r}")
+    if hops is not None:
+        non_str = [h for h in hops if not isinstance(h, str)]
+        if non_str:
+            raise ValueError(
+                f"every hop must be a string; got non-string entries: {non_str!r}")
     if not hops:
         hops = [
             "socks5://USER_PLACEHOLDER:PASS_PLACEHOLDER@proxy-a.example:1080",
@@ -482,7 +491,7 @@ def _to_yaml(obj: Any, indent: int = 0) -> str:
                 lines.append(f"{pad}- {_yaml_scalar(item)}")
     else:
         lines.append(f"{pad}{_yaml_scalar(obj)}")
-    return "\n".join(l for l in lines if l != "")
+    return "\n".join(ln for ln in lines if ln != "")
 
 
 def _yaml_scalar(v: Any) -> str:
@@ -701,7 +710,7 @@ def _check_fp_coherence(signals: Dict[str, Any]) -> CheckResult:
                            "no fingerprint profile supplied")
     try:
         profile = _profile_from_dict(prof)
-    except ProfileError as exc:
+    except (ProfileError, Exception) as exc:
         return CheckResult("fingerprint_coherence", _STATUS_LEAK, w,
                            f"profile could not be parsed: {exc}", {})
     issues = validate_profile(profile)
@@ -889,12 +898,18 @@ def _check_navigator_coherence(signals: Dict[str, Any]) -> CheckResult:
                        "with the declared platform", evidence)
 
 
-def _profile_from_dict(d: Dict[str, Any]) -> Profile:
+def _profile_from_dict(d: Any) -> Profile:
+    if not isinstance(d, dict):
+        raise ProfileError(
+            f"profile must be a JSON object, got {type(d).__name__!r}")
     fields = Profile.__dataclass_fields__  # type: ignore[attr-defined]
     missing = [k for k in fields if k not in d]
     if missing:
         raise ProfileError(f"profile missing fields: {missing}")
-    return Profile(**{k: d[k] for k in fields})
+    try:
+        return Profile(**{k: d[k] for k in fields})
+    except TypeError as exc:
+        raise ProfileError(f"profile field type error: {exc}") from exc
 
 
 def _is_private_ip(ip: str) -> bool:
