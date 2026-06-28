@@ -1,0 +1,3 @@
+$ veilbox-emit --version
+
+veilbox 0.1.0

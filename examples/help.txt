@@ -1,0 +1,20 @@
+$ veilbox-emit --help
+
+usage: veilbox [-h] [--version] {fingerprint,dns,proxy,audit,mcp} ...
+
+Self-hosted, zero-telemetry anti-fingerprint privacy toolkit with a built-in
+attribution/leak self-audit. For privacy, OPSEC, and AUTHORIZED research only.
+
+positional arguments:
+  {fingerprint,dns,proxy,audit,mcp}
+    fingerprint         Generate a coherent browser/device fingerprint
+                        profile.
+    dns                 Emit NextDNS DoH config (templated).
+    proxy               Emit proxy-chain config (templated).
+    audit               Run the attribution/leak self-audit and emit a
+                        traceability score.
+    mcp                 Run as an MCP server (stdio JSON-RPC).
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit

@@ -22,6 +22,79 @@ attribution/leak self-audit that scores how traceable you actually are.
 > evasion. See [ETHICS.md](ETHICS.md). By using veilbox you agree to use it
 > lawfully and only on systems you own or are authorized to test.
 
+
+<!-- cognis:example:start -->
+## 🔎 Example output
+
+Real, reproducible output from the tool — runs offline:
+
+```console
+$ veilbox-emit --version
+veilbox 0.1.0
+```
+
+```console
+$ veilbox-emit --help
+usage: veilbox [-h] [--version] {fingerprint,dns,proxy,audit,mcp} ...
+
+Self-hosted, zero-telemetry anti-fingerprint privacy toolkit with a built-in
+attribution/leak self-audit. For privacy, OPSEC, and AUTHORIZED research only.
+
+positional arguments:
+  {fingerprint,dns,proxy,audit,mcp}
+    fingerprint         Generate a coherent browser/device fingerprint
+                        profile.
+    dns                 Emit NextDNS DoH config (templated).
+    proxy               Emit proxy-chain config (templated).
+    audit               Run the attribution/leak self-audit and emit a
+                        traceability score.
+    mcp                 Run as an MCP server (stdio JSON-RPC).
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+```
+
+> Blocks above are real `veilbox` output — reproduce them from a clone.
+
+**Sample result format** _(illustrative values — run on your own data for real findings):_
+
+```
+{
+"timestamp": "2023-02-15T14:30:00Z",
+"findings": [
+    {
+        "id": "FINDING_12345",
+        "title": "Suspicious Network Traffic",
+        "description": "Unusual network traffic detected from IP 192.0.2.1",
+        "severity": "high",
+        "mitre_attack_id": ["T1003"],
+        "observables": [
+            {
+                "type": "ip-dst",
+                "value": "192.0.2.1"
+            }
+        ]
+    },
+    {
+        "id": "FINDING_67890",
+        "title": "Malware Detection",
+        "description": "Detected malware on system with ID 1234567890",
+        "severity": "critical",
+        "mitre_attack_id": ["T1059"],
+        "observables": [
+            {
+                "type": "file-hash",
+                "value": "abc123"
+            }
+        ]
+    }
+]
+}
+```
+
+<!-- cognis:example:end -->
+
 ## Usage — step by step
 
 `veilbox` is a self-hosted, zero-telemetry anti-fingerprint toolkit with a
